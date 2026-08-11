@@ -26,7 +26,7 @@ def generate_slides_with_ai(text, cohere_key, gemini_key, groq_key):
 {text}
 
 【出力フォーマット】
-必ず以下の構造を持つJSON配列（リスト）形式のみで出力してください。Markdownの解説や余計な挨拶は一切含めないでください。
+必ず以下の構造を持つJSON配列（リスト）形式のみで出力してください。Markdownの解説や余計なテキストは一切含めないでください。
 
 [
   {{
@@ -75,7 +75,7 @@ def generate_slides_with_ai(text, cohere_key, gemini_key, groq_key):
         st.error("APIキーを入力してください。")
         return None
 
-    # JSONパース処理
+    # JSONパース＆データ標準化処理
     try:
         clean_text = raw_response.strip()
         if clean_text.startswith("```json"):
@@ -84,7 +84,33 @@ def generate_slides_with_ai(text, cohere_key, gemini_key, groq_key):
             clean_text = clean_text[3:]
         if clean_text.endswith("```"):
             clean_text = clean_text[:-3]
-        return json.loads(clean_text.strip())
+            
+        data = json.loads(clean_text.strip())
+        
+        # データの正規化（辞書型以外で返ってきた場合の安全対策）
+        normalized_slides = []
+        if isinstance(data, list):
+            for item in data:
+                if isinstance(item, dict):
+                    normalized_slides.append({
+                        "title": str(item.get("title", "")),
+                        "number": str(item.get("number", "")),
+                        "subtitle": str(item.get("subtitle", ""))
+                    })
+                elif isinstance(item, str):
+                    normalized_slides.append({
+                        "title": item,
+                        "number": "",
+                        "subtitle": ""
+                    })
+        elif isinstance(data, dict):
+            normalized_slides.append({
+                "title": str(data.get("title", "")),
+                "number": str(data.get("number", "")),
+                "subtitle": str(data.get("subtitle", ""))
+            })
+
+        return normalized_slides
     except Exception as e:
         st.error(f"AIからのレスポンス解析に失敗しました: {e}\n\n生の応答:\n{raw_response}")
         return None
@@ -225,10 +251,16 @@ def main():
 
             # 各スライドのアコーディオン編集
             for idx, slide in enumerate(st.session_state.slides):
-                with st.accordion(f"スライド {idx + 1}: {slide.get('title', '無題')}", expanded=(idx == 0)):
-                    slide["number"] = st.text_input("強調数値・キーワード", slide.get("number", ""), key=f"num_{idx}")
-                    slide["title"] = st.text_input("メインコピー", slide.get("title", ""), key=f"title_{idx}")
-                    slide["subtitle"] = st.text_area("補足テキスト", slide.get("subtitle", ""), key=f"sub_{idx}")
+                # 安全対策：辞書でない場合は自動変換
+                if not isinstance(slide, dict):
+                    slide = {"title": str(slide), "number": "", "subtitle": ""}
+                    st.session_state.slides[idx] = slide
+
+                slide_title = slide.get("title", f"スライド {idx + 1}")
+                with st.accordion(f"スライド {idx + 1}: {slide_title}", expanded=(idx == 0)):
+                    slide["number"] = st.text_input("強調数値・キーワード", str(slide.get("number", "")), key=f"num_{idx}")
+                    slide["title"] = st.text_input("メインコピー", str(slide.get("title", "")), key=f"title_{idx}")
+                    slide["subtitle"] = st.text_area("補足テキスト", str(slide.get("subtitle", "")), key=f"sub_{idx}")
 
                     b_col1, b_col2, b_col3 = st.columns(3)
                     with b_col1:
@@ -272,6 +304,9 @@ def main():
 
             # プレビューカードの描画
             for idx, slide in enumerate(st.session_state.slides):
+                if not isinstance(slide, dict):
+                    continue
+
                 num_html = f'<div style="font-size: 48px; font-weight: bold; color: {accent_css}; margin-bottom: 8px;">{slide.get("number", "")}</div>' if slide.get("number") else ""
                 sub_html = f'<div style="font-size: 14px; color: {sub_css}; margin-top: 8px;">{slide.get("subtitle", "")}</div>' if slide.get("subtitle") else ""
 
