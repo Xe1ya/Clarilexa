@@ -1,0 +1,6 @@
+streamlit
+cohere
+google-generativeai
+groq
+python-pptx
+pandas
