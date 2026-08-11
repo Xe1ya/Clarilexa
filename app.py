@@ -1,4 +1,5 @@
 import json
+import uuid
 from io import BytesIO
 import streamlit as st
 import pandas as pd
@@ -13,9 +14,26 @@ from pptx.enum.text import PP_ALIGN
 # --- ページ基本設定 ---
 st.set_page_config(page_title="Minivibe - Apple風スライド生成", layout="wide")
 
-# --- セッション状態の初期化 ---
+# --- セッション状態の初期化＆古いデータの自動補正 ---
 if "slides" not in st.session_state:
     st.session_state.slides = []
+
+# 古いセッション状態に残っている非辞書型データを強制クリーンアップ
+cleaned_slides = []
+for item in st.session_state.slides:
+    if isinstance(item, dict):
+        if "id" not in item:
+            item["id"] = str(uuid.uuid4())
+        cleaned_slides.append(item)
+    elif isinstance(item, str):
+        cleaned_slides.append({
+            "id": str(uuid.uuid4()),
+            "title": item,
+            "number": "",
+            "subtitle": ""
+        })
+st.session_state.slides = cleaned_slides
+
 
 # --- AI生成関数 ---
 def generate_slides_with_ai(text, cohere_key, gemini_key, groq_key):
@@ -39,7 +57,6 @@ def generate_slides_with_ai(text, cohere_key, gemini_key, groq_key):
 
     raw_response = ""
     
-    # Cohere を優先使用
     if cohere_key:
         try:
             co = cohere.Client(cohere_key)
@@ -75,7 +92,6 @@ def generate_slides_with_ai(text, cohere_key, gemini_key, groq_key):
         st.error("APIキーを入力してください。")
         return None
 
-    # JSONパース＆データ標準化処理
     try:
         clean_text = raw_response.strip()
         if clean_text.startswith("```json"):
@@ -87,24 +103,26 @@ def generate_slides_with_ai(text, cohere_key, gemini_key, groq_key):
             
         data = json.loads(clean_text.strip())
         
-        # データの正規化（辞書型以外で返ってきた場合の安全対策）
         normalized_slides = []
         if isinstance(data, list):
             for item in data:
                 if isinstance(item, dict):
                     normalized_slides.append({
+                        "id": str(uuid.uuid4()),
                         "title": str(item.get("title", "")),
                         "number": str(item.get("number", "")),
                         "subtitle": str(item.get("subtitle", ""))
                     })
                 elif isinstance(item, str):
                     normalized_slides.append({
+                        "id": str(uuid.uuid4()),
                         "title": item,
                         "number": "",
                         "subtitle": ""
                     })
         elif isinstance(data, dict):
             normalized_slides.append({
+                "id": str(uuid.uuid4()),
                 "title": str(data.get("title", "")),
                 "number": str(data.get("number", "")),
                 "subtitle": str(data.get("subtitle", ""))
@@ -115,14 +133,14 @@ def generate_slides_with_ai(text, cohere_key, gemini_key, groq_key):
         st.error(f"AIからのレスポンス解析に失敗しました: {e}\n\n生の応答:\n{raw_response}")
         return None
 
+
 # --- PowerPoint (.pptx) 生成関数 ---
 def create_pptx(slides, theme):
     prs = Presentation()
-    prs.slide_width = Inches(13.333)  # 16:9 アスペクト比
+    prs.slide_width = Inches(13.333)
     prs.slide_height = Inches(7.5)
     blank_layout = prs.slide_layouts[6]
 
-    # テーマごとの配色設定
     if theme == "Apple White":
         bg_rgb = RGBColor(255, 255, 255)
         text_rgb = RGBColor(20, 20, 20)
@@ -138,7 +156,7 @@ def create_pptx(slides, theme):
         text_rgb = RGBColor(30, 30, 30)
         accent_rgb = RGBColor(80, 80, 80)
         sub_rgb = RGBColor(120, 120, 120)
-    else:  # Apple Black (デフォルト)
+    else:
         bg_rgb = RGBColor(0, 0, 0)
         text_rgb = RGBColor(255, 255, 255)
         accent_rgb = RGBColor(0, 229, 255)
@@ -147,13 +165,11 @@ def create_pptx(slides, theme):
     for slide_data in slides:
         slide = prs.slides.add_slide(blank_layout)
         
-        # 背景色設定
         background = slide.background
         fill = background.fill
         fill.solid()
         fill.fore_color.rgb = bg_rgb
 
-        # 強調数値/キーワード
         if slide_data.get("number"):
             txBox = slide.shapes.add_textbox(Inches(1), Inches(1.2), Inches(11.333), Inches(2.0))
             tf = txBox.text_frame
@@ -165,7 +181,6 @@ def create_pptx(slides, theme):
             p.font.bold = True
             p.font.color.rgb = accent_rgb
 
-        # メインタイトル
         y_pos = Inches(3.6) if slide_data.get("number") else Inches(2.5)
         txBox2 = slide.shapes.add_textbox(Inches(1), y_pos, Inches(11.333), Inches(1.8))
         tf2 = txBox2.text_frame
@@ -177,7 +192,6 @@ def create_pptx(slides, theme):
         p2.font.bold = True
         p2.font.color.rgb = text_rgb
 
-        # サブタイトル
         if slide_data.get("subtitle"):
             y_sub_pos = y_pos + Inches(1.8)
             txBox3 = slide.shapes.add_textbox(Inches(1), y_sub_pos, Inches(11.333), Inches(1.2))
@@ -194,12 +208,12 @@ def create_pptx(slides, theme):
     buffer.seek(0)
     return buffer
 
+
 # --- メイン画面レイアウト ---
 def main():
     st.title("🍏 Minivibe")
     st.caption("Apple風ミニマリズムプレゼン生成＆リアルタイムエディタ")
 
-    # サイドバー設定
     with st.sidebar:
         st.header("⚙️ 設定")
         cohere_key = st.text_input("Cohere API Key (推奨)", type="password")
@@ -212,7 +226,6 @@ def main():
             ["Apple Black", "Apple White", "Cyber", "Minimal Grey"]
         )
 
-    # 原稿入力エリア
     input_text = st.text_area(
         "プレゼンの原稿や長文アイデアを入力してください",
         height=150,
@@ -237,7 +250,6 @@ def main():
 
     st.divider()
 
-    # スライドが存在する場合に 2カラム（編集＆プレビュー）を表示
     if st.session_state.slides:
         col_edit, col_preview = st.columns([1, 1])
 
@@ -246,41 +258,57 @@ def main():
             st.subheader("🎛️ スライド編集パネル")
 
             if st.button("➕ 新しいスライドを追加"):
-                st.session_state.slides.append({"title": "新規スライド", "number": "100%", "subtitle": "補足説明"})
+                st.session_state.slides.append({
+                    "id": str(uuid.uuid4()),
+                    "title": "新規スライド",
+                    "number": "100%",
+                    "subtitle": "補足説明"
+                })
                 st.rerun()
 
-            # 各スライドのアコーディオン編集
-            for idx, slide in enumerate(st.session_state.slides):
-                # 安全対策：辞書でない場合は自動変換
+            # セッション内の要素を走査
+            for idx in range(len(st.session_state.slides)):
+                slide = st.session_state.slides[idx]
+                
+                # 型チェック（万が一辞書型でない場合は変換）
                 if not isinstance(slide, dict):
-                    slide = {"title": str(slide), "number": "", "subtitle": ""}
+                    slide = {"id": str(uuid.uuid4()), "title": str(slide), "number": "", "subtitle": ""}
                     st.session_state.slides[idx] = slide
 
-                slide_title = slide.get("title", f"スライド {idx + 1}")
+                if "id" not in slide:
+                    slide["id"] = str(uuid.uuid4())
+
+                slide_id = slide["id"]
+                slide_title = str(slide.get("title", f"スライド {idx + 1}"))
+
                 with st.accordion(f"スライド {idx + 1}: {slide_title}", expanded=(idx == 0)):
-                    slide["number"] = st.text_input("強調数値・キーワード", str(slide.get("number", "")), key=f"num_{idx}")
-                    slide["title"] = st.text_input("メインコピー", str(slide.get("title", "")), key=f"title_{idx}")
-                    slide["subtitle"] = st.text_area("補足テキスト", str(slide.get("subtitle", "")), key=f"sub_{idx}")
+                    new_number = st.text_input("強調数値・キーワード", value=str(slide.get("number", "")), key=f"num_{slide_id}")
+                    new_title = st.text_input("メインコピー", value=str(slide.get("title", "")), key=f"title_{slide_id}")
+                    new_subtitle = st.text_area("補足テキスト", value=str(slide.get("subtitle", "")), key=f"sub_{slide_id}")
+
+                    # 値の変更を即時反映
+                    slide["number"] = new_number
+                    slide["title"] = new_title
+                    slide["subtitle"] = new_subtitle
 
                     b_col1, b_col2, b_col3 = st.columns(3)
                     with b_col1:
-                        if idx > 0 and st.button("⬆️ 上へ", key=f"up_{idx}"):
+                        if idx > 0 and st.button("⬆️ 上へ", key=f"up_{slide_id}"):
                             st.session_state.slides[idx], st.session_state.slides[idx-1] = st.session_state.slides[idx-1], st.session_state.slides[idx]
                             st.rerun()
                     with b_col2:
-                        if idx < len(st.session_state.slides) - 1 and st.button("⬇️ 下へ", key=f"down_{idx}"):
+                        if idx < len(st.session_state.slides) - 1 and st.button("⬇️ 下へ", key=f"down_{slide_id}"):
                             st.session_state.slides[idx], st.session_state.slides[idx+1] = st.session_state.slides[idx+1], st.session_state.slides[idx]
                             st.rerun()
                     with b_col3:
-                        if st.button("🗑️ 削除", key=f"del_{idx}"):
+                        if st.button("🗑️ 削除", key=f"del_{slide_id}"):
                             st.session_state.slides.pop(idx)
                             st.rerun()
 
-        # --- 右カラム：リアルタイムプレビュー＆ダウンロード ---
+        # --- 右カラム：プレビュー＆ダウンロード ---
         with col_preview:
             st.subheader("👁️ リアルタイムプレビュー")
 
-            # テーマごとのCSSスタイリング
             bg_css = "#000000"
             text_css = "#ffffff"
             accent_css = "#00e5ff"
@@ -302,7 +330,6 @@ def main():
                 accent_css = "#505050"
                 sub_css = "#787878"
 
-            # プレビューカードの描画
             for idx, slide in enumerate(st.session_state.slides):
                 if not isinstance(slide, dict):
                     continue
@@ -324,7 +351,6 @@ def main():
 
             st.divider()
             
-            # PowerPoint (.pptx) のダウンロード処理
             pptx_data = create_pptx(st.session_state.slides, theme)
             st.download_button(
                 label="📥 PowerPoint (.pptx) をダウンロード",
