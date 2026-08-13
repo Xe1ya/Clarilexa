@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Minivibe（ミニバイブ）
+Clarilexa
 --------------------------------------------------------------
 冗長なプレゼン資料を「Apple発表会風ミニマリズム」に自動変換し、
 アプリ内でリアルタイムに編集・並べ替えしたのち、
@@ -455,7 +455,7 @@ if "slides" not in st.session_state:
 with st.sidebar:
     st.header("⚙️ 設定")
 
-    st.subheader("🔑 APIキー")
+    st.subheader("APIキー")
     st.caption("APIキーはこのセッション内でのみ使用され、サーバーに保存されません。")
 
     cohere_api_key = st.text_input("Cohere APIキー（メイン・推奨）", type="password", key="cohere_api_key")
@@ -464,9 +464,9 @@ with st.sidebar:
         gemini_api_key = st.text_input("Google Gemini APIキー", type="password", key="gemini_api_key")
         groq_api_key = st.text_input("Groq APIキー", type="password", key="groq_api_key")
 
-    engine = st.selectbox("🤖 生成に使うAIエンジン", ["Cohere", "Google Gemini", "Groq"], index=0)
+    engine = st.selectbox("生成に使うAIエンジン", ["Cohere", "Google Gemini", "Groq"], index=0)
 
-    st.subheader("🎨 デザインテーマ")
+    st.subheader("デザインテーマ")
     theme_name = st.selectbox("テーマを選択", list(THEMES.keys()), index=0, label_visibility="collapsed")
 
     with st.expander("詳細設定（モデル名 / デバッグ）"):
@@ -480,10 +480,10 @@ with st.sidebar:
 # メイン UI
 # ============================================================
 
-st.title("✨ Minivibe")
-st.caption("冗長なプレゼン資料を、Apple発表会風ミニマリズムへ。")
+st.title("Clarilexa")
+st.caption("冗長なプレゼン資料を、ミニマリズムに。")
 
-with st.expander("📄 原稿からAIでスライドを自動生成", expanded=True):
+with st.expander("原稿からAIでスライドを自動生成", expanded=True):
     raw_text = st.text_area(
         "変換したい原稿・長文を貼り付けてください",
         height=180,
@@ -494,7 +494,7 @@ with st.expander("📄 原稿からAIでスライドを自動生成", expanded=T
         n_slides = st.number_input("目安枚数", min_value=1, max_value=15, value=5, step=1)
     with gen_col1:
         st.write("")
-        generate_clicked = st.button("🚀 AIでスライド生成", type="primary", use_container_width=True)
+        generate_clicked = st.button("🔍AIでスライド生成", type="primary", use_container_width=True)
 
     if generate_clicked:
         if not raw_text or not raw_text.strip():
@@ -524,9 +524,9 @@ left_col, right_col = st.columns([1, 1])
 
 # ---------------- 左カラム：編集エリア（アコーディオン） ----------------
 with left_col:
-    st.subheader("📝 編集")
+    st.subheader("編集")
 
-    if st.button("➕ 新しいスライドを追加", use_container_width=True):
+    if st.button("+ 新しいスライドを追加", use_container_width=True):
         add_blank_slide()
         st.rerun()
 
@@ -548,17 +548,17 @@ with left_col:
                 )
 
                 b1, b2, b3 = st.columns(3)
-                if b1.button("⬆️ 上へ", key=f"up_{sid}", use_container_width=True):
+                if b1.button("↑ 上へ", key=f"up_{sid}", use_container_width=True):
                     move_slide(i, -1)
                     st.rerun()
-                if b2.button("⬇️ 下へ", key=f"down_{sid}", use_container_width=True):
+                if b2.button("↓ 下へ", key=f"down_{sid}", use_container_width=True):
                     move_slide(i, 1)
                     st.rerun()
                 if b3.button("🗑️ 削除", key=f"del_{sid}", use_container_width=True):
                     delete_slide(i)
                     st.rerun()
 
-        with st.expander("📋 全体構成一覧（テーブル表示）"):
+        with st.expander("全体構成一覧（テーブル表示）"):
             df = pd.DataFrame(st.session_state.slides)[["headline", "metric", "subtext"]]
             df.index = df.index + 1
             df.columns = ["メインコピー", "数値", "補足"]
@@ -566,7 +566,7 @@ with left_col:
 
 # ---------------- 右カラム：プレビューエリア ----------------
 with right_col:
-    st.subheader("👀 プレビュー")
+    st.subheader("プレビュー")
 
     theme = THEMES[theme_name]
 
@@ -579,7 +579,7 @@ with right_col:
         try:
             pptx_buffer = build_pptx(st.session_state.slides, theme_name)
             st.download_button(
-                "⬇️ PowerPointをダウンロード（.pptx）",
+                "⤵︎ PowerPointをダウンロード（.pptx）",
                 data=pptx_buffer,
                 file_name="minivibe_presentation.pptx",
                 mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
