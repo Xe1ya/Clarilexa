@@ -25,7 +25,7 @@ import html
 import streamlit as st
 
 # ページ設定は最初のStreamlitコマンドである必要がある
-st.set_page_config(page_title="Minivibe ✨", page_icon="✨", layout="wide")
+st.set_page_config(page_title="Clarilexa", page_icon="", layout="wide")
 
 import pandas as pd
 
