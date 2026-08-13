@@ -85,9 +85,9 @@ FONT_STACK_CSS = (
 )
 PPTX_FONT_NAME = "Yu Gothic"  # 日本語表示に強いフォント（未インストール環境ではOS側で代替されます）
 
-DEFAULT_COHERE_MODEL = "command-r-plus"
-DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
-DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_COHERE_MODEL = "command-a-03-2025"  # 2026年8月時点のCohere主力チャットモデル
+DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"    # 2026年8月時点のGemini現行Flashモデル
+DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"   # llama-3.3-70b-versatile廃止に伴う後継モデル
 
 
 # ============================================================
