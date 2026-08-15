@@ -6,9 +6,10 @@ Clarilex（旧Minivibe）
 アプリ内でリアルタイムに編集・並べ替えしたのち、
 PowerPoint(.pptx)として出力できるStreamlitアプリ。
 
-AIがスライドの文脈から画像検索キーワードを自動生成し、
-Unsplash（APIキー設定時）またはプレースホルダー画像を
-各スライドへ自動的に挿入する機能つき。
+AIがスライドの文脈から画像検索キーワードを自動生成し、Unsplashから
+取得した複数の候補画像の中から「そのスライドに最もふさわしい1枚」を
+Cohereに選定させて自動挿入する。画像が不要なスライドは個別に、
+または一括で画像を削除できる。
 
 起動方法:
     pip install -r requirements.txt
@@ -19,7 +20,9 @@ Unsplash（APIキー設定時）またはプレースホルダー画像を
         Cohere : https://dashboard.cohere.com/
         Gemini : https://aistudio.google.com/
         Groq   : https://console.groq.com/
-    - Unsplash Access Key（任意・画像自動挿入の精度向上用）
+      ※画像選定にもCohereを使用するため、画像自動選定機能をフルに
+        使う場合はCohere APIキーの設定を推奨します。
+    - Unsplash Access Key（任意・画像自動挿入用）
         https://unsplash.com/developers
         未設定でも動作しますが、その場合はテーマに関係しないダミー
         プレースホルダー画像（picsum.photos）が使われます。
@@ -101,6 +104,7 @@ DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"    # 2026年8月時点のGemini現行F
 DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"   # llama-3.3-70b-versatile廃止に伴う後継モデル
 
 UNSPLASH_SEARCH_URL = "https://api.unsplash.com/search/photos"
+DEFAULT_IMAGE_CANDIDATE_COUNT = 5
 
 
 # ============================================================
@@ -138,6 +142,12 @@ def new_slide_dict(headline: str = "", metric: str = "", subtext: str = "",
         "image_credit": image_credit,
         "show_image": show_image,
     }
+
+
+def clear_slide_image(slide: dict):
+    """スライドから画像情報だけを取り除く（キーワードは残し、再検索できるようにする）"""
+    slide["image_url"] = ""
+    slide["image_credit"] = ""
 
 
 # ============================================================
@@ -297,11 +307,140 @@ def call_groq(prompt: str, api_key: str, model: str = DEFAULT_GROQ_MODEL) -> str
         raise RuntimeError(f"Groq APIの呼び出しに失敗しました: {e}")
 
 
+# ============================================================
+# 画像検索・選定
+#   1. Unsplashでキーワードに一致する候補を複数取得
+#   2. スライドの文脈（見出し/数値/補足）を踏まえ、Cohereが最も
+#      ふさわしい1枚を選定する
+#   3. Unsplash未設定・失敗時はダミープレースホルダー画像にフォールバック
+# ============================================================
+
+def _fetch_unsplash_candidates(keyword: str, access_key: str, count: int = DEFAULT_IMAGE_CANDIDATE_COUNT,
+                                timeout: int = 10):
+    try:
+        import requests
+    except ImportError:
+        raise RuntimeError("`requests` ライブラリが未インストールです。`pip install requests` を実行してください。")
+
+    resp = requests.get(
+        UNSPLASH_SEARCH_URL,
+        params={"query": keyword, "per_page": count, "orientation": "landscape"},
+        headers={"Authorization": f"Client-ID {access_key}"},
+        timeout=timeout,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    results = data.get("results") or []
+    if not results:
+        raise RuntimeError(f"Unsplashで '{keyword}' に一致する画像が見つかりませんでした。")
+
+    candidates = []
+    for photo in results:
+        url = (photo.get("urls") or {}).get("regular") or (photo.get("urls") or {}).get("small")
+        if not url:
+            continue
+        photographer = (photo.get("user") or {}).get("name", "Unsplash")
+        description = photo.get("description") or photo.get("alt_description") or ""
+        candidates.append({
+            "url": url,
+            "credit": f"Photo by {photographer} on Unsplash",
+            "description": description.strip(),
+        })
+    if not candidates:
+        raise RuntimeError("Unsplashの応答に有効な画像URLが含まれていませんでした。")
+    return candidates
+
+
+def select_best_image_with_cohere(slide: dict, candidates: list, cohere_key: str,
+                                   cohere_model: str = DEFAULT_COHERE_MODEL) -> dict:
+    """候補画像（説明文つき）の中から、スライドの文脈に最もふさわしい1枚をCohereに選ばせる。
+    失敗時は例外を送出する（呼び出し側で先頭候補へのフォールバックを想定）。"""
+    if not candidates:
+        raise ValueError("候補画像がありません。")
+    if len(candidates) == 1:
+        return candidates[0]
+    if not cohere_key:
+        raise ValueError("Cohere APIキーが未設定のため画像選定できません。")
+
+    lines = []
+    for idx, c in enumerate(candidates, start=1):
+        desc = c.get("description") or "(説明文なし)"
+        lines.append(f"{idx}. {desc}")
+    candidates_text = "\n".join(lines)
+
+    prompt = f"""あなたはプレゼンテーションの画像選定担当です。
+以下のスライド内容に、視覚的に最もふさわしい画像を候補の中から1つだけ選んでください。
+
+【スライド内容】
+見出し: {slide.get('headline', '')}
+強調数値: {slide.get('metric', '')}
+補足: {slide.get('subtext', '')}
+
+【画像候補】
+{candidates_text}
+
+最も適した候補の番号を、半角数字1つだけで答えてください。説明・記号・文章は一切不要です。
+"""
+    raw = call_cohere(prompt, cohere_key, cohere_model)
+    match = re.search(r"\d+", raw or "")
+    if not match:
+        raise ValueError(f"Cohereの応答から番号を抽出できませんでした: {raw!r}")
+
+    idx = int(match.group())
+    if not (1 <= idx <= len(candidates)):
+        idx = 1
+    return candidates[idx - 1]
+
+
+def fetch_image_for_slide(slide: dict, unsplash_access_key: str = None, cohere_key: str = None,
+                           cohere_model: str = DEFAULT_COHERE_MODEL,
+                           candidate_count: int = DEFAULT_IMAGE_CANDIDATE_COUNT):
+    """スライドの文脈に最も適した画像を選び、(url, credit) を返す。
+
+    1. Unsplashキーがあれば複数候補を取得し、Cohereにそのスライドへ最も
+       ふさわしい1枚を選定させる。
+    2. Cohereでの選定に失敗した場合（キー未設定・API失敗など）は
+       Unsplash検索結果の先頭候補にフォールバックする。
+    3. Unsplash自体が使えない／失敗した場合はキーワードから決定的に
+       生成されるダミープレースホルダー画像（picsum.photos）を返す。
+    """
+    keyword = (slide.get("image_keyword") or "").strip()
+    if not keyword:
+        raise ValueError("画像検索キーワードが空です。")
+
+    if unsplash_access_key:
+        try:
+            candidates = _fetch_unsplash_candidates(keyword, unsplash_access_key, count=candidate_count)
+            try:
+                chosen = select_best_image_with_cohere(slide, candidates, cohere_key, cohere_model)
+            except Exception:
+                chosen = candidates[0]  # Cohereでの選定に失敗したら先頭候補を採用
+            return chosen["url"], chosen["credit"]
+        except Exception:
+            pass  # Unsplash自体が失敗したらプレースホルダーへ
+
+    seed = quote(keyword)
+    return f"https://picsum.photos/seed/{seed}/900/600", None
+
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def download_image_bytes(url: str) -> bytes:
+    """pptx埋め込み用に画像バイナリを取得する。同一URLはセッション内でキャッシュされる。"""
+    try:
+        import requests
+    except ImportError:
+        raise RuntimeError("`requests` ライブラリが未インストールです。`pip install requests` を実行してください。")
+
+    resp = requests.get(url, timeout=15)
+    resp.raise_for_status()
+    return resp.content
+
+
 def generate_slides_with_ai(source_text, engine, cohere_key, gemini_key, groq_key,
                              cohere_model, gemini_model, groq_model, n_slides,
                              image_lang="English (推奨)", auto_fetch_images=True,
-                             unsplash_key=None):
-    """AIでスライド本文を生成し、必要なら画像URLも自動取得して返す。
+                             unsplash_key=None, image_candidate_count=DEFAULT_IMAGE_CANDIDATE_COUNT):
+    """AIでスライド本文を生成し、必要なら画像もCohereによる選定つきで自動取得する。
     戻り値: (slides: list[dict], image_warnings: list[str])
     """
     prompt = build_prompt(source_text, n_slides, image_lang)
@@ -341,81 +480,18 @@ def generate_slides_with_ai(source_text, engine, cohere_key, gemini_key, groq_ke
     image_warnings = []
     if auto_fetch_images:
         for s in slides:
-            kw = s.get("image_keyword", "").strip()
-            if not kw:
+            if not s.get("image_keyword", "").strip():
                 continue
             try:
-                url, credit = fetch_image_url(kw, unsplash_key)
+                url, credit = fetch_image_for_slide(
+                    s, unsplash_key, cohere_key, cohere_model, image_candidate_count
+                )
                 s["image_url"] = url
                 s["image_credit"] = credit
             except Exception as e:
-                image_warnings.append(f"「{(s['headline'] or kw)[:15]}」: {e}")
+                image_warnings.append(f"「{(s['headline'] or s['image_keyword'])[:15]}」: {e}")
 
     return slides, image_warnings
-
-
-# ============================================================
-# 画像検索・取得（Unsplash APIをメイン、未設定時はプレースホルダー）
-# ============================================================
-
-def _fetch_from_unsplash(keyword: str, access_key: str, timeout: int = 10):
-    try:
-        import requests
-    except ImportError:
-        raise RuntimeError("`requests` ライブラリが未インストールです。`pip install requests` を実行してください。")
-
-    resp = requests.get(
-        UNSPLASH_SEARCH_URL,
-        params={"query": keyword, "per_page": 1, "orientation": "landscape"},
-        headers={"Authorization": f"Client-ID {access_key}"},
-        timeout=timeout,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    results = data.get("results") or []
-    if not results:
-        raise RuntimeError(f"Unsplashで '{keyword}' に一致する画像が見つかりませんでした。")
-
-    photo = results[0]
-    url = (photo.get("urls") or {}).get("regular") or (photo.get("urls") or {}).get("small")
-    if not url:
-        raise RuntimeError("Unsplashの応答に画像URLが含まれていませんでした。")
-
-    photographer = (photo.get("user") or {}).get("name", "Unsplash")
-    credit = f"Photo by {photographer} on Unsplash"
-    return url, credit
-
-
-def fetch_image_url(keyword: str, unsplash_access_key: str = None):
-    """画像URLと（あれば）クレジット表記を返す。
-    Unsplashキーがある場合はUnsplash検索を優先し、失敗時や未設定時は
-    ダミープレースホルダー画像（picsum.photos、キーワードに応じて決定的に選ばれる）にフォールバックする。
-    """
-    keyword = (keyword or "").strip()
-    if not keyword:
-        raise ValueError("画像検索キーワードが空です。")
-
-    if unsplash_access_key:
-        try:
-            return _fetch_from_unsplash(keyword, unsplash_access_key)
-        except Exception:
-            pass  # フォールバックへ
-
-    seed = quote(keyword)
-    return f"https://picsum.photos/seed/{seed}/900/600", None
-
-
-@st.cache_data(show_spinner=False, ttl=3600)
-def download_image_bytes(url: str) -> bytes:
-    """pptx埋め込み用に画像バイナリを取得する。同一URLはセッション内でキャッシュされる。"""
-    try:
-        import requests
-    except ImportError:
-        raise RuntimeError("`requests` ライブラリが未インストールです。`pip install requests` を実行してください。")
-
-    resp = requests.get(url, timeout=15)
-    resp.raise_for_status()
-    return resp.content
 
 
 # ============================================================
@@ -439,6 +515,11 @@ def add_blank_slide():
     st.session_state.slides.append(
         new_slide_dict(headline="新しいメッセージ", metric="0", subtext="補足テキストを入力")
     )
+
+
+def clear_all_images():
+    for s in st.session_state.slides:
+        clear_slide_image(s)
 
 
 # ============================================================
@@ -732,6 +813,7 @@ with st.sidebar:
     st.caption("APIキーはこのセッション内でのみ使用され、サーバーに保存されません。")
 
     cohere_api_key = st.text_input("Cohere APIキー（メイン・推奨）", type="password", key="cohere_api_key")
+    st.caption("スライド生成に加え、画像候補の中からスライドに最適な1枚を選ぶ用途にも使用されます。")
 
     with st.expander("補助エンジン（Google Gemini / Groq）"):
         gemini_api_key = st.text_input("Google Gemini APIキー", type="password", key="gemini_api_key")
@@ -742,7 +824,10 @@ with st.sidebar:
         "Unsplash Access Key", type="password", key="unsplash_api_key",
         help="https://unsplash.com/developers で無料取得できます。",
     )
-    st.caption("未入力の場合は、キーワードに応じたダミープレースホルダー画像（picsum.photos）が使われます。")
+    st.caption(
+        "Unsplashから複数候補を取得し、各スライドの内容に最も合う1枚をCohereが選定します。"
+        "未入力の場合はダミープレースホルダー画像（picsum.photos）が使われます。"
+    )
 
     engine = st.selectbox("🤖 生成に使うAIエンジン", ["Cohere", "Google Gemini", "Groq"], index=0)
 
@@ -754,6 +839,7 @@ with st.sidebar:
         gemini_model = st.text_input("Geminiモデル", value=DEFAULT_GEMINI_MODEL)
         groq_model = st.text_input("Groqモデル", value=DEFAULT_GROQ_MODEL)
         image_lang = st.selectbox("画像検索キーワードの言語", ["English (推奨)", "日本語"], index=0)
+        image_candidate_count = st.slider("画像候補数（Cohereによる選定用）", min_value=2, max_value=8, value=DEFAULT_IMAGE_CANDIDATE_COUNT)
         show_debug = st.checkbox("AIの生応答を表示する", value=False)
 
 
@@ -777,7 +863,7 @@ with st.expander("📄 原稿からAIでスライドを自動生成", expanded=T
         st.write("")
         generate_clicked = st.button("🚀 AIでスライド生成", type="primary", use_container_width=True)
 
-    auto_fetch_images = st.checkbox("🖼️ 生成と同時に画像も自動取得する", value=True)
+    auto_fetch_images = st.checkbox("🖼️ 生成と同時に画像も自動選定する（Cohereが最適な1枚を選定）", value=True)
 
     if generate_clicked:
         if not raw_text or not raw_text.strip():
@@ -790,6 +876,7 @@ with st.expander("📄 原稿からAIでスライドを自動生成", expanded=T
                         cohere_api_key, gemini_api_key, groq_api_key,
                         cohere_model, gemini_model, groq_model,
                         n_slides, image_lang, auto_fetch_images, unsplash_api_key,
+                        image_candidate_count,
                     )
                     st.session_state.slides = new_slides
                     st.success(f"{len(new_slides)}枚のスライドを生成しました。")
@@ -811,9 +898,15 @@ left_col, right_col = st.columns([1, 1])
 with left_col:
     st.subheader("📝 編集")
 
-    if st.button("➕ 新しいスライドを追加", use_container_width=True):
-        add_blank_slide()
-        st.rerun()
+    top_btn_col1, top_btn_col2 = st.columns(2)
+    with top_btn_col1:
+        if st.button("➕ 新しいスライドを追加", use_container_width=True):
+            add_blank_slide()
+            st.rerun()
+    with top_btn_col2:
+        if st.button("🗑️ すべての画像を削除", use_container_width=True):
+            clear_all_images()
+            st.rerun()
 
     if not st.session_state.slides:
         st.info("まだスライドがありません。AIで生成するか、上のボタンで追加してください。")
@@ -845,19 +938,28 @@ with left_col:
                         "表示する", value=slide.get("show_image", True), key=f"showimg_{sid}"
                     )
 
-                if st.button("🔄 画像を検索/更新", key=f"fetchimg_{sid}", use_container_width=True):
-                    kw = (slide["image_keyword"] or "").strip()
-                    if not kw:
-                        st.warning("画像検索キーワードを入力してください。")
-                    else:
-                        with st.spinner("画像を検索中..."):
-                            try:
-                                url, credit = fetch_image_url(kw, unsplash_api_key)
-                                slide["image_url"] = url
-                                slide["image_credit"] = credit
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"画像の取得に失敗しました: {e}")
+                imgbtn_col1, imgbtn_col2 = st.columns(2)
+                with imgbtn_col1:
+                    if st.button("🔄 画像を検索/更新", key=f"fetchimg_{sid}", use_container_width=True):
+                        kw = (slide["image_keyword"] or "").strip()
+                        if not kw:
+                            st.warning("画像検索キーワードを入力してください。")
+                        else:
+                            with st.spinner("Cohereが画像を選定中..."):
+                                try:
+                                    url, credit = fetch_image_for_slide(
+                                        slide, unsplash_api_key, cohere_api_key,
+                                        cohere_model, image_candidate_count,
+                                    )
+                                    slide["image_url"] = url
+                                    slide["image_credit"] = credit
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"画像の取得に失敗しました: {e}")
+                with imgbtn_col2:
+                    if st.button("🗑️ 画像を削除", key=f"delimg_{sid}", use_container_width=True):
+                        clear_slide_image(slide)
+                        st.rerun()
 
                 if slide.get("image_url"):
                     st.image(slide["image_url"], caption=slide.get("image_credit") or None, use_container_width=True)
@@ -869,7 +971,7 @@ with left_col:
                 if b2.button("⬇️ 下へ", key=f"down_{sid}", use_container_width=True):
                     move_slide(i, 1)
                     st.rerun()
-                if b3.button("🗑️ 削除", key=f"del_{sid}", use_container_width=True):
+                if b3.button("🗑️ スライドを削除", key=f"del_{sid}", use_container_width=True):
                     delete_slide(i)
                     st.rerun()
 
