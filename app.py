@@ -39,7 +39,7 @@ from urllib.parse import quote
 import streamlit as st
 
 # ページ設定は最初のStreamlitコマンドである必要がある
-st.set_page_config(page_title="Clarilex ✨", page_icon="✨", layout="wide")
+st.set_page_config(page_title="Clarilex", page_icon="", layout="wide")
 
 import pandas as pd
 
@@ -877,9 +877,9 @@ if "slides" not in st.session_state:
 # ============================================================
 
 with st.sidebar:
-    st.header("⚙️ 設定")
+    st.header("設定")
 
-    st.subheader("🔑 APIキー")
+    st.subheader("APIキー")
     st.caption("APIキーはこのセッション内でのみ使用され、サーバーに保存されません。")
 
     cohere_api_key = st.text_input("Cohere APIキー（メイン・推奨）", type="password", key="cohere_api_key")
@@ -889,7 +889,7 @@ with st.sidebar:
         gemini_api_key = st.text_input("Google Gemini APIキー", type="password", key="gemini_api_key")
         groq_api_key = st.text_input("Groq APIキー", type="password", key="groq_api_key")
 
-    st.subheader("🖼️ 画像検索（Cモード用・任意）")
+    st.subheader("画像検索（Cモード用）")
     unsplash_api_key = st.text_input(
         "Unsplash Access Key", type="password", key="unsplash_api_key",
         help="https://unsplash.com/developers で無料取得できます。",
@@ -898,9 +898,9 @@ with st.sidebar:
         "未入力の場合は、キーワードから決定的に選ばれるダミープレースホルダー画像（picsum.photos）が使われます。"
     )
 
-    engine = st.selectbox("🤖 生成に使うAIエンジン", ["Cohere", "Google Gemini", "Groq"], index=0)
+    engine = st.selectbox("生成に使うAIエンジン", ["Cohere", "Google Gemini", "Groq"], index=0)
 
-    st.subheader("🎨 デザインテーマ")
+    st.subheader("デザインテーマ")
     theme_name = st.selectbox("テーマを選択", list(THEMES.keys()), index=0, label_visibility="collapsed")
 
     with st.expander("詳細設定（モデル名 / 画像 / デバッグ）"):
@@ -919,10 +919,10 @@ with st.sidebar:
 # メイン UI
 # ============================================================
 
-st.title("✨ Clarilex")
-st.caption("冗長なプレゼン資料を、Apple発表会風ミニマリズムへ。（旧Minivibe）")
+st.title("Clarilex")
+st.caption("冗長な法制史資料を、スマートに改革。")
 
-with st.expander("📄 原稿からAIでスライドを自動生成", expanded=True):
+with st.expander("原稿からAIでスライドを自動生成", expanded=True):
     raw_text = st.text_area(
         "変換したい原稿・長文を貼り付けてください",
         height=180,
@@ -930,13 +930,13 @@ with st.expander("📄 原稿からAIでスライドを自動生成", expanded=T
     )
     gen_col1, gen_col2 = st.columns([3, 1])
     with gen_col2:
-        n_slides = st.number_input("目安枚数", min_value=1, max_value=15, value=5, step=1)
+        n_slides = st.number_input("目安枚数", min_value=1, max_value=100, value=5, step=1)
     with gen_col1:
         st.write("")
-        generate_clicked = st.button("🚀 AIでスライド生成", type="primary", use_container_width=True)
+        generate_clicked = st.button("🔍 AIでスライド生成", type="primary", use_container_width=True)
 
     auto_fetch_images = st.checkbox(
-        "🖼️ 生成と同時に画像も自動取得する（キーワード検索モード・Cohereが最適な1枚を選定）", value=True
+        "生成と同時に画像も自動取得する（キーワード検索モード・Cohereが最適な1枚を選定）", value=True
     )
 
     if generate_clicked:
@@ -961,7 +961,7 @@ with st.expander("📄 原稿からAIでスライドを自動生成", expanded=T
                     st.error(f"生成に失敗しました: {e}")
 
     if show_debug and st.session_state.get("_last_ai_raw"):
-        with st.expander("🔍 AIの生応答（デバッグ）"):
+        with st.expander("AIの生応答（デバッグ）"):
             st.code(st.session_state["_last_ai_raw"])
 
 st.divider()
@@ -970,7 +970,7 @@ left_col, right_col = st.columns([1, 1])
 
 # ---------------- 左カラム：編集エリア（アコーディオン） ----------------
 with left_col:
-    st.subheader("📝 編集")
+    st.subheader("編集")
 
     top_btn_col1, top_btn_col2 = st.columns(2)
     with top_btn_col1:
@@ -978,7 +978,7 @@ with left_col:
             add_blank_slide()
             st.rerun()
     with top_btn_col2:
-        if st.button("🗑️ すべての画像を削除", use_container_width=True):
+        if st.button("すべての画像を削除", use_container_width=True):
             clear_all_images()
             st.rerun()
 
@@ -999,7 +999,7 @@ with left_col:
                     "補足テキスト（1〜2行）", value=slide["subtext"], key=f"subtext_{sid}", height=70
                 )
 
-                st.markdown("**🖼️ 画像**")
+                st.markdown("**画像**")
                 src_col, show_col = st.columns([3, 1])
                 with src_col:
                     slide["image_source"] = st.radio(
@@ -1050,7 +1050,7 @@ with left_col:
                         )
                     with kw_col2:
                         slide["image_keyword_locked"] = st.checkbox(
-                            "🔒 固定", value=slide.get("image_keyword_locked", False), key=f"lockkw_{sid}",
+                            "固定", value=slide.get("image_keyword_locked", False), key=f"lockkw_{sid}",
                             help="ONにすると、Cohereによる候補選定をスキップし、このキーワードの検索結果を"
                                  "直接使用します（無関係な画像が出にくくなり、精度・再現性が上がります）。",
                         )
@@ -1089,7 +1089,7 @@ with left_col:
                     else:
                         st.image(preview_src, caption=preview_credit or None, use_container_width=True)
 
-                    if st.button("🗑️ この画像を削除", key=f"delimg_{sid}", use_container_width=True):
+                    if st.button("この画像を削除", key=f"delimg_{sid}", use_container_width=True):
                         clear_slide_image(slide)
                         st.rerun()
 
@@ -1100,11 +1100,11 @@ with left_col:
                 if b2.button("⬇️ 下へ", key=f"down_{sid}", use_container_width=True):
                     move_slide(i, 1)
                     st.rerun()
-                if b3.button("🗑️ スライドを削除", key=f"del_{sid}", use_container_width=True):
+                if b3.button("スライドを削除", key=f"del_{sid}", use_container_width=True):
                     delete_slide(i)
                     st.rerun()
 
-        with st.expander("📋 全体構成一覧（テーブル表示）"):
+        with st.expander("全体構成一覧（テーブル表示）"):
             df = pd.DataFrame(st.session_state.slides)[
                 ["headline", "metric", "subtext", "image_source", "image_keyword"]
             ]
