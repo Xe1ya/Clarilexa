@@ -850,7 +850,7 @@ with tab_ai:
         n_slides = st.number_input("目安枚数", min_value=1, max_value=40, value=5, step=1)
     with gen_col1:
         st.write("")
-        generate_clicked = st.button(AIでスライド生成）", type="primary", use_container_width=True)
+        generate_clicked ="st.button(AIでスライド生成）", type="primary", use_container_width=True)
 
     auto_fetch_images = st.checkbox("生成と同時に画像も自動取得する（キーワード検索モード）", value=True)
     st.caption("40枚を超える非常に長い原稿は、右の「長文を貼り付けて一括スライド化」タブの利用がおすすめです（枚数上限なし）。")
