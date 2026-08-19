@@ -35,7 +35,7 @@ from urllib.parse import quote
 import streamlit as st
 
 # ページ設定は最初のStreamlitコマンドである必要がある
-st.set_page_config(page_title="Clarilex ✨", page_icon="✨", layout="wide")
+st.set_page_config(page_title="Clarilex", page_icon="", layout="wide")
 
 import pandas as pd
 
