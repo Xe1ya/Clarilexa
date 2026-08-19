@@ -833,10 +833,10 @@ with st.sidebar:
 # メイン UI
 # ============================================================
 
-st.title("✨ Clarilex")
-st.caption("どんな長さ・テーマの原稿でも、自由な枚数のスライドへ。（旧Minivibe）")
+st.title("Clarilex")
+st.caption("どんな原稿でも、自由な枚数のスライドへ。")
 
-tab_ai, tab_paste = st.tabs(["🤖 AIで自動生成", "✂️ 長文を貼り付けて一括スライド化（AI不要）"])
+tab_ai, tab_paste = st.tabs(["AIで自動生成", "長文を貼り付けて一括スライド化（AI不要）"])
 
 with tab_ai:
     raw_text = st.text_area(
@@ -850,9 +850,9 @@ with tab_ai:
         n_slides = st.number_input("目安枚数", min_value=1, max_value=40, value=5, step=1)
     with gen_col1:
         st.write("")
-        generate_clicked = st.button("🚀 AIでスライド生成（既存スライドを置き換え）", type="primary", use_container_width=True)
+        generate_clicked = st.button(AIでスライド生成）", type="primary", use_container_width=True)
 
-    auto_fetch_images = st.checkbox("🖼️ 生成と同時に画像も自動取得する（キーワード検索モード）", value=True)
+    auto_fetch_images = st.checkbox("生成と同時に画像も自動取得する（キーワード検索モード）", value=True)
     st.caption("40枚を超える非常に長い原稿は、右の「長文を貼り付けて一括スライド化」タブの利用がおすすめです（枚数上限なし）。")
 
     if generate_clicked:
@@ -875,7 +875,7 @@ with tab_ai:
                     st.error(f"生成に失敗しました: {e}")
 
     if show_debug and st.session_state.get("_last_ai_raw"):
-        with st.expander("🔍 AIの生応答（デバッグ）"):
+        with st.expander("AIの生応答（デバッグ）"):
             st.code(st.session_state["_last_ai_raw"])
 
 with tab_paste:
@@ -906,7 +906,7 @@ with tab_paste:
     with paste_col1:
         append_mode = st.checkbox("既存のスライドの後ろに追加する（OFFですべて置き換え）", value=True)
     with paste_col2:
-        split_clicked = st.button("📥 スライドに流し込む", type="primary", use_container_width=True)
+        split_clicked = st.button("スライドに流し込む", type="primary", use_container_width=True)
 
     if split_clicked:
         if not bulk_text or not bulk_text.strip():
@@ -930,15 +930,15 @@ left_col, right_col = st.columns([1, 1])
 
 # ---------------- 左カラム：編集エリア（アコーディオン） ----------------
 with left_col:
-    st.subheader("📝 編集")
+    st.subheader("編集")
 
     top_btn_col1, top_btn_col2 = st.columns(2)
     with top_btn_col1:
-        if st.button("➕ 新しいスライドを追加", use_container_width=True, key="main_add_slide"):
+        if st.button("➕新しいスライドを追加", use_container_width=True, key="main_add_slide"):
             add_blank_slide()
             st.rerun()
     with top_btn_col2:
-        if st.button("🗑️ すべての画像を削除", use_container_width=True):
+        if st.button("すべての画像を削除", use_container_width=True):
             clear_all_images()
             st.rerun()
 
@@ -956,7 +956,7 @@ with left_col:
                 )
                 slide["subtext"] = st.text_area("サブテキスト（補足）", value=slide["subtext"], key=f"subtext_{sid}", height=70)
 
-                st.markdown("**🖼️ 画像**")
+                st.markdown("画像")
                 src_col, show_col = st.columns([3, 1])
                 with src_col:
                     slide["image_source"] = st.radio(
@@ -997,7 +997,7 @@ with left_col:
                         )
                     with kw_col2:
                         slide["image_keyword_locked"] = st.checkbox(
-                            "🔒 固定", value=slide.get("image_keyword_locked", False), key=f"lockkw_{sid}",
+                            "固定", value=slide.get("image_keyword_locked", False), key=f"lockkw_{sid}",
                             help="ONにすると、Cohereによる候補選定をスキップし、このキーワードの検索結果を直接使用します（精度・再現性優先）。",
                         )
                     if st.button("🔄 画像を検索/更新", key=f"fetchimg_{sid}", use_container_width=True):
@@ -1028,7 +1028,7 @@ with left_col:
                     else:
                         st.image(preview_src, caption=preview_credit or None, use_container_width=True)
 
-                    if st.button("🗑️ この画像を削除", key=f"delimg_{sid}", use_container_width=True):
+                    if st.button("この画像を削除", key=f"delimg_{sid}", use_container_width=True):
                         clear_slide_image(slide)
                         st.rerun()
 
@@ -1043,7 +1043,7 @@ with left_col:
                     delete_slide(i)
                     st.rerun()
 
-        with st.expander("📋 全体構成一覧（テーブル表示）"):
+        with st.expander("全体構成一覧（テーブル表示）"):
             df = pd.DataFrame(st.session_state.slides)[["title", "main_text", "subtext", "image_source", "image_keyword"]].copy()
             df["main_text"] = df["main_text"].apply(lambda t: (t[:40] + "…") if isinstance(t, str) and len(t) > 40 else t)
             df.index = df.index + 1
@@ -1052,7 +1052,7 @@ with left_col:
 
 # ---------------- 右カラム：プレビューエリア ----------------
 with right_col:
-    st.subheader("👀 プレビュー")
+    st.subheader("プレビュー")
 
     theme = THEMES[theme_name]
 
